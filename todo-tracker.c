@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only 
+// SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (c) 2026 Soumayjit Bala <ayushkantibala2020@gmail.com>
 
 
@@ -38,7 +38,6 @@
 
  4.Output — Emit clean .txt, JSON, and proper exit codes for developers and
           automated CI/CD pipelines.
- 
 
 ////////////////////////////////
 // ARCHITECTURE PIPELINE (will be removed soon!)
@@ -73,6 +72,7 @@
 */
 
 #include <stdio.h>     // io
+#include <stdbool.h>   // bool
 #include <stdlib.h>    // size_t
 #include <sys/types.h> // file access
 #include <dirent.h>    // dir. fns.
@@ -92,8 +92,8 @@
 ////////////////////////////////
 // path (addr.) object
 typedef struct Path {
-  char * file_name;
-  char * file_path;
+  char* file_name;
+  char* file_path;
   int line_number;
   int column_number;
   /*
@@ -112,9 +112,9 @@ typedef struct Path {
 typedef struct Todo {
   int ref_id;
   int priority; // max is <100
-  char * state; // closed, open, in_progress
+  char* state; // closed, open, in_progress
   path address; // exact location of the task
-  char * data;  // meta-data about the task
+  char* data;  // meta-data about the task
 } todo;
 
 ////////////////////////////////
@@ -176,7 +176,7 @@ path *pdb_top(path_db *db) {
 };
 
 /*
- * TODO: traverse the item from index
+ * traverse the item from index
  * Return pointer to item for in-place inspection/mutation (avoids copying structs)
  */
 path *pdb_get(const path_db *db, size_t index) {
@@ -206,74 +206,84 @@ void pdb_free(path_db *db) {
 ////////////////////////////////
 // Global helpers
 
+// #1
+// implements policies for path traversal
+bool accord(const char *path_name, mode_t mode) {
+  // Rule for directories
+  if (S_ISDIR(mode)) {
+    // Directories to ignore
+    if (strcmp(path_name, ".git") == 0 || strcmp(path_name, ".vscode") == 0) {
+      return false;
+    }
+    // Allow all other directories so we can recurse into them (e.g. "src")
+    return true;
+  }
+
+  // Rule for regular files
+  if (S_ISREG(mode)) {
+    return (fnmatch("*.c",   path_name, 0) == 0
+    || fnmatch("*.h",   path_name, 0) == 0
+    || fnmatch("*.cc",  path_name, 0) == 0
+    || fnmatch("*.cpp", path_name, 0) == 0
+    || fnmatch("*.hpp", path_name, 0) == 0);
+  }
+
+  // Reject everything else (symlinks, sockets, devices, etc.)
+  return false;
+}
+
 /*
  * FIXME: [RECURSION LIMITATION]
  *        Each recursion layer allocates `char path[PATH_MAX]` (4096 bytes) on the stack.
  *        On very deep folder structures this risks stack overflow.
  *        Future refactor: Flatten into an iterative loop using an explicit queue.
  */
-void file_traverser(char * dir_path) {
+// #2
+// recursively iterate over the directory path
+/* NOTE: we will do batching */
+void file_traverser(const char* dir_path) {
   // support for sorting by
   // - a-z
-  // - timestamp
-  DIR *dir;
-  struct dirent *ent;
-  struct stat states;
-
-  dir = opendir(dir_path);
+  // - timestamp 
+  DIR *dir = opendir(dir_path);
   if (dir == NULL) {
     perror(dir_path);
     return;
   }
 
-  // if a directory entry is a file or directory
-  while ((ent = readdir(dir)) != NULL) {
+  struct dirent *ent;
+  struct stat states;
 
-    /*
-     * FIXME: temporary policies for traversal
-     * [think about .gitignore file can be used]
-     * make it a contained fn. to call here for diverse use.
-     * (thinking about regex support...)
-     *     - special hidden files .<file>
-     *     - other format files no need (svg, png, pdf...)
-     */
-    if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) {
-      continue;
-    }
-    // experimental addition
-    if (fnmatch("*git*", ent->d_name, 0) == 0) {
-      continue;
-    }
-    if (strcmp(ent->d_name, ".tmp") == 0) {
-      continue;
-    }
-    if (strcmp(ent->d_name, ".vscode") == 0) {
-      continue;
-    }
-    // temporary specific folders of mine
-    if (strcmp(ent->d_name, ".c_guide") == 0 || strcmp(ent->d_name, "tatr") == 0) {
-      continue;
-    }
-    // Skip symbolic links entirely to guarantee cycle freedom
-    if (S_ISLNK(states.st_mode)) {
+  while ((ent = readdir(dir)) != NULL) {
+    // Skip "." and ".." immediately (0 syscalls, 0 string copies wasted)
+    if (ent->d_name[0] == '.' &&
+      (ent->d_name[1] == '\0' || (ent->d_name[1] == '.' && ent->d_name[2] == '\0'))) {
       continue;
     }
 
     char path[PATH_MAX];
     snprintf(path, sizeof(path), "%s/%s", dir_path, ent->d_name);
 
-    if (lstat(path, &states) == 0) {
-      if (S_ISDIR(states.st_mode)) {
-        file_traverser(path);
-      } else {
-        // ...
-        printf("%s\n", path); // temporary print for debuging
-      }
+    if (lstat(path, &states) != 0) {
+      continue;
+    }
+
+    if (!accord(ent->d_name, states.st_mode)) {
+      continue;
+    }
+
+    if (S_ISDIR(states.st_mode)) {
+      file_traverser(path);
+    } else {
+      // ...
+      printf("%s\n", path); // temporary addition for debugging
     }
   }
   closedir(dir);
 }
 
+///////////////////////////////
+// entry point
 int main(void) {
   char cwd[PATH_MAX];
   if (getcwd(cwd, sizeof(cwd)) == NULL) {
