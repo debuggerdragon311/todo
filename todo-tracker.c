@@ -1,76 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (c) 2026 Soumayjit Bala <ayushkantibala2020@gmail.com>
 
-
-/*
-////////////////////////////////
-// ROADMAP (will be removed soon!)
-  [x] Phase 0: Dynamic Array (DArray) foundation for paths and todos.
-  [ ] Phase 1: Robust Path Discovery & Traversal
-               - Replace stat() with lstat() (avoid symlink cycles).
-               - Move hardcoded ignores into a clean pattern matcher.
-               - Prevent stack exhaustion on deep recursion.
-  [ ] Phase 2: Memory Model Hardening (Arena / Pool)
-               - Stop raw strdup/free fragmentation.
-               - Linear allocation for char *s (critical for high file counts).
-  [ ] Phase 3: Zero-Copy File Ingestion (mmap)
-               - Map files to memory pages rather than reading byte-by-byte.
-  [ ] Phase 4: Lexer & Comment Parser (State Machine)
-               - Detect comments: //, / *... * /, #, --
-               - Ignore false positives inside char * literals: "TODO: fix"
-               - Strip comment prefixes and normalize whitespace.
-  [ ] Phase 5: Query & Output Engine
-               - Format output (Terminal, Markdown, JSON).
-               - Filter/sort by priority, file type, line number.
-  [ ] Phase 6: Multi-Threading (Google-Scale Performance)
-               - Multi-threaded worker queue for reading and lexing.
-
-////////////////////////////////
-//GOALS
- 1.Filtering — Respect .gitignore and skip build artifacts dynamically so you only
-             touch relevant source code.
-
- 2.Safety — Detect binary files and guard against symlink loops so the tool never crashes or
-            hangs.
-
- 3.Parsing — Use a state machine to extract real comments across languages while
-           ignoring code and char * literals.
-
- 4.Output — Emit clean .txt, JSON, and proper exit codes for developers and
-          automated CI/CD pipelines.
-
-////////////////////////////////
-// ARCHITECTURE PIPELINE (will be removed soon!)
-          cwd
-           │
-           ▼
-   ┌───────────────┐
-   │ file_traverser│ ── (Directory walk via lstat)
-   └───────┬───────┘
-           │ filter: skip .git, binary extensions (.png, .so)
-           ▼
-     [ path_db ] ────► Dynamic Array of valid source paths
-           │
-           │ (Pipeline Stage 2: Ingestion & Parsing)
-           ▼
-   ┌───────────────┐
-   │  file_reader  │ ── (mmap file content directly to memory)
-   └───────┬───────┘
-           │
-           ▼
-   ┌───────────────┐
-   │  todo_lexer   │ ── (FSM: extracts text inside comments only)
-   └───────┬───────┘
-           │
-           ▼
-     [ todo_db ] ────► Dynamic Array of clean, parsed TODO records
-           │
-           ▼
-   ┌───────────────┐
-   │  report_view  │ ── (Format & dump to terminal / stdout)
-   └───────────────┘
-*/
-
 #include <stdio.h>     // io
 #include <stdbool.h>   // bool
 #include <stdlib.h>    // size_t
@@ -80,18 +10,14 @@
 #include <sys/stat.h>  // file stats
 #include <unistd.h>    // getcwd()
 #include <limits.h>    // PATH_MAX 4096
-// experimental addition (will be removed soon!)
 #include <fnmatch.h>   // fnmatch()
 
-/*
- * TODO: Replace this macro with C99 compound zero initializer: (todo){0}
- *       Empty root init. obj.
- */
-#define empty {0,0,"",{"","",0,0,0},""}
+#define LOG_IMPLEMENTATION
+#include "log.h"
 
 ////////////////////////////////
-// path (addr.) object
-typedef struct Path {
+// meta (location) object
+typedef struct Location {
   char* file_name;
   char* file_path;
   int line_number;
@@ -105,7 +31,7 @@ typedef struct Path {
    *           - ...
    */
   int optional;
-} path;
+} location;
 
 ////////////////////////////////
 // todo object -> tasks (root)
@@ -113,89 +39,81 @@ typedef struct Todo {
   int ref_id;
   int priority; // max is <100
   char* state; // closed, open, in_progress
-  path address; // exact location of the task
+  location loc; // exact location of the task
   char* data;  // meta-data about the task
 } todo;
 
 ////////////////////////////////
 // DArray for paths obj.
 typedef struct Storage {
-  path *item;
+  char* *item;
   size_t count;
   size_t capacity;
 } path_db;
 
-// add path to the end
-void pdb_push(path_db *db, path item) {
-  // cap. expansion
-  if (db->count == db->capacity){
+// Add path to the end (duplicates string so stack buffers don't dangle)
+void pdb_push(path_db *db, const char *item) {
+  if (!db || !item) return;
+
+  // Capacity expansion
+  if (db->count == db->capacity) {
     size_t new_cap = db->capacity == 0 ? 8 : db->capacity * 2;
 
-    /*
-     * TODO: Check for size_t overflow before multiplication if scaling huge
-     */
-    path *new_item = realloc(
+    char **new_item = realloc(
       db->item,
-      new_cap *sizeof(*new_item)
+      new_cap * sizeof(*new_item)
     );
 
     if (new_item == NULL) {
       perror("realloc");
       exit(EXIT_FAILURE);
     }
-    // copy paths object in array
+
     db->item = new_item;
     db->capacity = new_cap;
   }
 
-  /*
-   * BUG (WARNING):
-   * 'item.file_name' and 'item.file_path' must be OWNED heaps (e.g. strdup).
-   * If you pass temporary stack buffers (like `char path[PATH_MAX]` from traverser),
-   * they will dangle or corrupt once the stack frame collapses!
-   */
-  // increase counter
-  db->item[db->count++] = item;
-};
+  // Store heap-allocated copy so stack buffers (e.g., path[PATH_MAX]) stay valid
+  db->item[db->count++] = strdup(item);
+}
 
 // remove path from end
-int pdb_pop(path_db *db, path *item) {
-  if (db->count == 0) {
+// gives ownership of string pointer to caller via *item
+int pdb_pop(path_db *db, char **item) {
+  if (!db || db->count == 0) {
     return 0;
   }
-  *item = db->item[--db->count];
+  db->count--;
+  if (item != NULL) {
+    *item = db->item[db->count];
+  } else {
+    free(db->item[db->count]); // Prevent leak if caller ignores the popped value
+  }
   return 1;
-};
+}
 
-// return last path without removing
-path *pdb_top(path_db *db) {
-  if (db->count == 0) {
+// Return last path string without removing
+char *pdb_top(const path_db *db) {
+  if (!db || db->count == 0) {
     return NULL;
   }
-  return &db->item[db->count-1];
-};
+  return db->item[db->count - 1];
+}
 
-/*
- * traverse the item from index
- * Return pointer to item for in-place inspection/mutation (avoids copying structs)
- */
-path *pdb_get(const path_db *db, size_t index) {
-  if (index >= db->count) {
+// Access path string at index
+char *pdb_get(const path_db *db, size_t index) {
+  if (!db || index >= db->count) {
     return NULL;
   }
-  return &db->item[index];
+  return db->item[index];
 }
 
 // Clean up allocated memory
 void pdb_free(path_db *db) {
   if (!db) return;
 
-  /*
-   * NOTE: Only call free() here if paths were duplicated with malloc/strdup.
-   */
   for (size_t i = 0; i < db->count; i++) {
-    free(db->item[i].file_name);
-    free(db->item[i].file_path);
+    free(db->item[i]);
   }
   free(db->item);
   db->item = NULL;
@@ -241,10 +159,8 @@ bool accord(const char *path_name, mode_t mode) {
 // #2
 // recursively iterate over the directory path
 /* NOTE: we will do batching */
-void file_traverser(const char* dir_path) {
-  // support for sorting by
-  // - a-z
-  // - timestamp 
+// Recursively iterate over the directory and collect matched files into 'db'
+void file_traverser(const char* dir_path, path_db *db) {
   DIR *dir = opendir(dir_path);
   if (dir == NULL) {
     perror(dir_path);
@@ -255,16 +171,17 @@ void file_traverser(const char* dir_path) {
   struct stat states;
 
   while ((ent = readdir(dir)) != NULL) {
-    // Skip "." and ".." immediately (0 syscalls, 0 string copies wasted)
+    // Skip "." and ".."
     if (ent->d_name[0] == '.' &&
       (ent->d_name[1] == '\0' || (ent->d_name[1] == '.' && ent->d_name[2] == '\0'))) {
       continue;
-    }
+      }
 
-    char path[PATH_MAX];
-    snprintf(path, sizeof(path), "%s/%s", dir_path, ent->d_name);
+    // Renamed to 'full_path' to avoid variable shadowing
+    char full_path[PATH_MAX];
+    snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, ent->d_name);
 
-    if (lstat(path, &states) != 0) {
+    if (lstat(full_path, &states) != 0) {
       continue;
     }
 
@@ -273,10 +190,10 @@ void file_traverser(const char* dir_path) {
     }
 
     if (S_ISDIR(states.st_mode)) {
-      file_traverser(path);
+      // Pass the db pointer down to recursive calls
+      file_traverser(full_path, db);
     } else {
-      // ...
-      printf("%s\n", path); // temporary addition for debugging
+      pdb_push(db, full_path);
     }
   }
   closedir(dir);
@@ -286,10 +203,22 @@ void file_traverser(const char* dir_path) {
 // entry point
 int main(void) {
   char cwd[PATH_MAX];
+
   if (getcwd(cwd, sizeof(cwd)) == NULL) {
     perror("getcwd");
     return 1;
   }
-  file_traverser(cwd);
+
+  path_db db = {0};
+  log_info(ANSI_DIM "PDB Initialized" ANSI_RESET);
+
+  file_traverser(cwd, &db);
+
+  log_info("Collected %zu files for parsing.", db.count);
+  for (size_t i = 0; i < db.count; i++) {
+    log_info("[%zu]: %s", i, db.item[i]);
+  }
+
+  pdb_free(&db);
   return 0;
 }
