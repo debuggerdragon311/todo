@@ -23,7 +23,7 @@ typedef struct Location {
   int line_number;
   int column_number;
   /*
-   * TODO: Add file-type enumeration for language-aware parsing:
+   * TODO:(#4) Add file-type enumeration for language-aware parsing:
    *       FT_C_LIKE (//, / *...* /), FT_SHELL_LIKE (#), FT_SQL_LIKE (--)
    *       => add extra fields
    *           - file types
@@ -38,9 +38,9 @@ typedef struct Location {
 typedef struct Todo {
   int ref_id;
   int priority; // max is <100
-  char* state; // closed, open, in_progress
+  char* state;  // closed, open, in_progress
   location loc; // exact location of the task
-  char* data;  // meta-data about the task
+  char* data;   // meta-data about the task
 } todo;
 
 ////////////////////////////////
@@ -130,7 +130,9 @@ bool accord(const char *path_name, mode_t mode) {
   // Rule for directories
   if (S_ISDIR(mode)) {
     // Directories to ignore
-    if (strcmp(path_name, ".git") == 0 || strcmp(path_name, ".vscode") == 0) {
+    if (strcmp(path_name, ".git") == 0
+       || strcmp(path_name, ".vscode") == 0 /* TODO:(#3) add .gitignore support */
+       ) {
       return false;
     }
     // Allow all other directories so we can recurse into them (e.g. "src")
@@ -138,12 +140,15 @@ bool accord(const char *path_name, mode_t mode) {
   }
 
   // Rule for regular files
+  // (for now it supports only C/Cpp)
   if (S_ISREG(mode)) {
     return (fnmatch("*.c",   path_name, 0) == 0
     || fnmatch("*.h",   path_name, 0) == 0
     || fnmatch("*.cc",  path_name, 0) == 0
     || fnmatch("*.cpp", path_name, 0) == 0
-    || fnmatch("*.hpp", path_name, 0) == 0);
+    || fnmatch("*.hpp", path_name, 0) == 0
+    || strcmp(path_name, "Makefile") == 0
+    );
   }
 
   // Reject everything else (symlinks, sockets, devices, etc.)
@@ -151,15 +156,16 @@ bool accord(const char *path_name, mode_t mode) {
 }
 
 /*
- * FIXME: [RECURSION LIMITATION]
- *        Each recursion layer allocates `char path[PATH_MAX]` (4096 bytes) on the stack.
+ * FIXME:(#1) [RECURSION LIMITATION]
+ *        Each recursion layer allocates `char path[PATH_MAX]` (4096 bytes) on the stack,
  *        On very deep folder structures this risks stack overflow.
  *        Future refactor: Flatten into an iterative loop using an explicit queue.
  */
+
+/* NOTE:(#2) we will do batching. */
+
 // #2
-// recursively iterate over the directory path
-/* NOTE: we will do batching */
-// Recursively iterate over the directory and collect matched files into 'db'
+// Recursively iterate over the directory and collect matched files into 'db'.
 void file_traverser(const char* dir_path, path_db *db) {
   DIR *dir = opendir(dir_path);
   if (dir == NULL) {
@@ -175,9 +181,8 @@ void file_traverser(const char* dir_path, path_db *db) {
     if (ent->d_name[0] == '.' &&
       (ent->d_name[1] == '\0' || (ent->d_name[1] == '.' && ent->d_name[2] == '\0'))) {
       continue;
-      }
+    }
 
-    // Renamed to 'full_path' to avoid variable shadowing
     char full_path[PATH_MAX];
     snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, ent->d_name);
 
@@ -199,6 +204,48 @@ void file_traverser(const char* dir_path, path_db *db) {
   closedir(dir);
 }
 
+////////////////////////////////
+// it will parse the files taken from `path_db.items` in buffer fully file by
+// file and it also used for reading .gitignore file content for accord policies.
+/* NOTE:(#1) caller will free memory using `free()` */
+char* parse(char* *path) {
+  // null checking
+  if (path == NULL || *path == NULL) {
+    fprintf(stderr, "Error: Invalid path pointer.\n");
+    return NULL;
+  }
+
+  const char* a_path = *path;
+
+  FILE* file = fopen(a_path,"r");
+  if (file == NULL) {
+    perror("Error: Opening file.\n");
+    return NULL;
+  }
+
+  /*
+   * TODO:(#1) adding checks for `ftell()` if failed can give invalid size.
+   */
+  fseek(file, 0, SEEK_END);
+  long fsize = ftell(file);
+  rewind(file);
+
+  char* buff = (char*)malloc(fsize + 1);
+  if (buff == NULL) {
+    fprintf(stderr, "Error: memory allocation failed.\n");
+    fclose(file);
+    return NULL;
+  }
+
+  /*
+   * TODO:(#2) adding verfication for how many bytes read.
+   */
+  size_t read_bytes = fread(buff, 1, fsize, file);
+  buff[read_bytes] = '\0';
+  fclose(file);
+  return buff;
+};
+
 ///////////////////////////////
 // entry point
 int main(void) {
@@ -214,11 +261,19 @@ int main(void) {
 
   file_traverser(cwd, &db);
 
-  log_info("Collected %zu files for parsing.", db.count);
+  log_info(ANSI_DIM "Collected %zu files for parsing." ANSI_RESET, db.count);
   for (size_t i = 0; i < db.count; i++) {
-    log_info("[%zu]: %s", i, db.item[i]);
+    printf("[%zu]: %s\n", i, db.item[i]);
   }
 
+  printf("\n");
+  log_info(ANSI_DIM "parser initialized..." ANSI_RESET);
+  log_info(ANSI_DIM "parsing `db.item[2]`..." ANSI_RESET);
+  char* tmp = parse(&db.item[2]);
+  printf("%s\n",tmp);
+
+  free(tmp);
   pdb_free(&db);
+
   return 0;
 }
