@@ -1,8 +1,9 @@
-CC      ?= cc
+CC      ?= clang
 TARGET  := todo
-SRCS    := todo-tracker.c
-HEADERS := log.h
-CFLAGS  := -Wall -Wextra -I.
+SRCS    := $(wildcard src/*.c)
+CFLAGS  := -std=gnu23 -Wall -Wextra -Iinclude -I.
+
+RELEASE_FLAGS := -O3 -DNDEBUG -flto -static -s
 
 # Colors
 CYAN    := \033[1;36m
@@ -22,9 +23,10 @@ debug:
 	@printf "$(GREEN)[INFO]$(RESET) Target ./%s successfully built\n" "$(TARGET)"
 
 release:
-	@printf "$(CYAN)[BUILD]$(RESET) Compiling %s (optimized release)...\n" "$(TARGET)"
-	@$(CC) $(CFLAGS) -O3 -DNDEBUG -s $(SRCS) -o $(TARGET)
-	@printf "$(GREEN)[INFO]$(RESET) Created production binary: ./%s\n" "$(TARGET)"
+	@printf "$(CYAN)[BUILD]$(RESET) Compiling %s (optimized static release)...\n" "$(TARGET)"
+	@$(CC) $(CFLAGS) $(RELEASE_FLAGS) $(SRCS) -o $(TARGET)
+	@strip --strip-all $(TARGET) 2>/dev/null || true
+	@printf "$(GREEN)[INFO]$(RESET) Created standalone static binary: ./%s\n" "$(TARGET)"
 
 run:
 	@printf "$(YELLOW)[RUN]$(RESET) Executing ./%s...\n\n" "$(TARGET)"

@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Dashboard | where task can be...</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <!-- <link rel="preconnect" href="https://fonts.googleapis.com"> -->
+  <!-- <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin> -->
+  <!-- <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+    rel="stylesheet"> -->
+  <link rel="stylesheet" href="./style.css" />
+</head>
+
+<body>
+  <div class="app-viewport">
+
+    <!-- Top Command Bar -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="org-badge">
+          <!-- <span class="org-glyph"></span> -->
+          <img src="/icon.png" alt="Logo" class="org-glyph"
+            style="width: 14px; height: 14px; object-fit: contain; vertical-align: middle;" />
+          <span class="org-name">TRIAGE</span>
+        </div>
+        <span class="header-sep">/</span>
+        <span class="app-slug">triage_core</span>
+        <span class="env-pill">LIVE</span>
+      </div>
+
+      <div class="header-shortcuts" aria-hidden="true">
+        <span><kbd>j</kbd><kbd>k</kbd> nav</span>
+        <span><kbd>x</kbd> toggle</span>
+        <span><kbd>c</kbd> copy</span>
+        <span><kbd>↵</kbd> open</span>
+        <span><kbd>/</kbd> find</span>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <div class="main-wrapper">
+
+      <!-- Query & Filter Console -->
+      <section class="console-toolbar">
+        <div class="search-field">
+          <svg class="search-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="queryInput"
+            placeholder="Filter by message, type, path, or line (Press '/' to focus)..." spellcheck="false"
+            autocomplete="off" />
+          <button class="clear-btn" id="clearBtn" title="Clear filter (Esc)">&times;</button>
+        </div>
+
+        <div class="toolbar-controls">
+          <!-- State Segmented Track -->
+          <div class="segmented-track" id="filterSegment">
+            <button class="seg-item active" data-state="all">
+              All <span class="counter" id="cnt-all">0</span>
+            </button>
+            <button class="seg-item" data-state="open">
+              Open <span class="counter" id="cnt-open">0</span>
+            </button>
+            <button class="seg-item" data-state="in_progress">
+              Active <span class="counter" id="cnt-prog">0</span>
+            </button>
+            <button class="seg-item" data-state="closed">
+              Closed <span class="counter" id="cnt-closed">0</span>
+            </button>
+          </div>
+
+          <!-- Type Filter Cluster -->
+          <div class="select-cluster">
+            <label for="typeSelect">TYPE</label>
+            <select id="typeSelect" class="cmd-select">
+              <option value="all">All Types</option>
+              <option value="TODO">TODO</option>
+              <option value="FIXME">FIXME</option>
+              <option value="NOTE">NOTE</option>
+              <option value="HACK">HACK</option>
+            </select>
+          </div>
+
+          <!-- Sort Select Cluster -->
+          <div class="select-cluster">
+            <label for="sortSelect">SORT</label>
+            <select id="sortSelect" class="cmd-select">
+              <option value="prio-desc">Priority: High &rarr; Low</option>
+              <option value="prio-asc">Priority: Low &rarr; High</option>
+              <option value="type-asc">Type: A &rarr; Z</option>
+              <option value="alpha-asc">Message: A &rarr; Z</option>
+              <option value="alpha-desc">Message: Z &rarr; A</option>
+              <option value="path-asc">Location: File Path</option>
+              <option value="ref-asc">Ref ID: Sequential</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- Task Master Table -->
+      <main class="table-card">
+        <div class="table-columns">
+          <span class="col-head ch-state">STATE</span>
+          <span class="col-head ch-id">REF</span>
+          <span class="col-head ch-prio">PRIORITY</span>
+          <span class="col-head ch-type">TYPE</span>
+          <span class="col-head ch-data">TODO / METADATA</span>
+          <span class="col-head ch-addr">SOURCE ADDRESS</span>
+        </div>
+
+        <div class="table-body" id="todoListing"></div>
+
+        <div class="empty-tray" id="emptyNotice" style="display: none;">
+          <div class="empty-icon">&empty;</div>
+          <p>No matching task records in buffer</p>
+        </div>
+      </main>
+    </div>
+
+    <!-- Status Footer -->
+    <footer class="org-footer">
+      <div class="foot-section foot-diagnostics">
+        <div class="diag-item">
+          <span class="pulse-indicator"></span>
+          <span class="diag-label">ENGINE:</span>
+          <span class="diag-val">POSIX / MMAP</span>
+        </div>
+        <div class="diag-item">
+          <span class="diag-label">BUFF:</span>
+          <span class="diag-val" id="memFootprint">4.0 KB</span>
+        </div>
+        <div class="diag-item">
+          <span class="diag-label">SYNC:</span>
+          <span class="diag-val" id="syncLatency">&lt;1ms (SSR)</span>
+        </div>
+      </div>
+
+      <div class="foot-section foot-metrics">
+        <div class="diag-item">
+          <span class="diag-label">QUERY:</span>
+          <span class="diag-val"><span id="matchesCount">0</span> / <span id="totalCount">0</span> MATCHES</span>
+        </div>
+        <div class="diag-item mobile-hide">
+          <span class="diag-label">FS_ACCORD:</span>
+          <span class="diag-val">ACTIVE (.git, .archives SKIPPED)</span>
+        </div>
+      </div>
+
+      <div class="foot-section foot-org">
+        <span class="org-legal">triage_core v0.0.2</span>
+        <!-- <span class="foot-sep">&bull;</span> -->
+        <!-- <span class="org-license">AGPL-3.0-only</span> -->
+        <!-- <span class="foot-sep">&bull;</span> -->
+        <!-- <span class="org-copy">&copy; 2025-2026 TODO</span> -->
+      </div>
+    </footer>
+  </div>
+
+  <div id="toast" class="toast">Copied location to clipboard</div>
+
+  <!-- Retains C daemon's SSR string-injection without cluttering HTML -->
+  <script>window.__INITIAL_DATA__ = /* __INJECTED_TODOS__ */ null;</script>
+  <script src="/script.js" defer></script>
+</body>
+
+</html>
