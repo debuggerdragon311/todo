@@ -1,74 +1,13 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Soumayjit Bala <ayushkantibala2020@gmail.com>
+
 #include "./../include/server.h"
 #include "./../include/log.h"
+#include "./../include/assets.h"
 #include <arpa/inet.h>
+#include <ctype.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
-
-// Resolve index.html and style.css relative to the executable binary directory
-static char g_resolved_path[PATH_MAX * 2];
-
-static const char *resolve_asset_path(const char *filename) {
-  if (!filename)
-    return NULL;
-
-  // 1. Check current working directory first
-  if (access(filename, R_OK) == 0) {
-    return filename;
-  }
-
-  // 2. Locate directory where the binary executable resides (/proc/self/exe on
-  // Linux)
-  char exe_path[PATH_MAX];
-  ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
-  if (len > 0) {
-    exe_path[len] = '\0';
-    char *slash = strrchr(exe_path, '/');
-    if (slash) {
-      *slash = '\0'; // exe_path is now the binary's folder
-      snprintf(g_resolved_path, sizeof(g_resolved_path), "%s/%s", exe_path,
-               filename);
-      if (access(g_resolved_path, R_OK) == 0) {
-        return g_resolved_path;
-      }
-    }
-  }
-
-  return filename;
-}
-
-static char *read_binary_file(const char *path, size_t *out_len) {
-  if (!path)
-    return NULL;
-
-  FILE *f = fopen(path, "rb");
-  if (!f)
-    return NULL;
-
-  fseek(f, 0, SEEK_END);
-  long sz = ftell(f);
-  if (sz < 0) {
-    fclose(f);
-    return NULL;
-  }
-  fseek(f, 0, SEEK_SET);
-
-  char *buf = malloc((size_t)sz);
-  if (!buf) {
-    fclose(f);
-    return NULL;
-  }
-
-  size_t bytes_read = fread(buf, 1, (size_t)sz, f);
-  fclose(f);
-
-  if (bytes_read != (size_t)sz) {
-    free(buf);
-    return NULL;
-  }
-
-  *out_len = (size_t)sz;
-  return buf;
-}
 
 static const char *get_filename(const char *path) {
   if (!path)
@@ -157,7 +96,6 @@ static char *todos_to_json(const todo_db *todos) {
     else if (t->state == TODO_STATE_BLOCKED)
       state_str = "closed";
 
-    // Map Kind enum to string
     const char *type_str = "TODO";
     if (t->kind == TODO_KIND_FIXME)
       type_str = "FIXME";
@@ -258,7 +196,6 @@ static void send_response(int client_fd, const char *status,
   }
 }
 
-// Decodes URL-encoded parameters (e.g. "%2F" -> "/", "%20" -> " ")
 static void url_decode(char *dst, const char *src) {
   char a, b;
   while (*src) {
@@ -296,24 +233,17 @@ static void open_file_in_editor(const char *file, int line, int col) {
   char cmd[PATH_MAX * 2];
 
   if (editor && strlen(editor) > 0) {
-    // VS Code / Cursor: `code -g file:line:col`
     if (strstr(editor, "code") || strstr(editor, "cursor")) {
       snprintf(cmd, sizeof(cmd), "%s -g \"%s\":%d:%d >/dev/null 2>&1 &", editor,
                file, line, col);
-    }
-    // Sublime Text: `subl file:line:col`
-    else if (strstr(editor, "subl")) {
+    } else if (strstr(editor, "subl")) {
       snprintf(cmd, sizeof(cmd), "%s \"%s\":%d:%d >/dev/null 2>&1 &", editor,
                file, line, col);
-    }
-    // Vim / Neovim / Nano / Kate / Gedit: `<editor> +line file`
-    else {
+    } else {
       snprintf(cmd, sizeof(cmd), "%s +%d \"%s\" >/dev/null 2>&1 &", editor,
                line, file);
     }
   } else {
-    // Fallback if neither $EDITOR nor $VISUAL is set:
-    // Uses the OS default application for this file type
 #if defined(__APPLE__)
     snprintf(cmd, sizeof(cmd), "open \"%s\" >/dev/null 2>&1 &", file);
 #elif defined(_WIN32)
@@ -383,90 +313,48 @@ void server_start(uint16_t port, const todo_db *todos) {
                       strlen(json));
         free(json);
       }
-      // Route 2: CSS Stylesheet (Resolved path-independently)
+      // Route 2: CSS (Zero-copy in-memory)
       else if (strcmp(path, "/style.css") == 0) {
-        const char *css_file = resolve_asset_path("style.css");
-        char *css = read_file(css_file);
-        if (css) {
-          send_response(client_fd, "200 OK", "text/css; charset=utf-8", css,
-                        strlen(css));
-          free(css);
-        } else {
-          send_response(client_fd, "404 Not Found", "text/plain",
-                        "style.css not found", 19);
-        }
+        send_response(client_fd, "200 OK", "text/css; charset=utf-8",
+                      asset_style_css, asset_style_css_len);
       }
-
-      // Route 2.5: JavaScript (Resolved path-independently)
+      // Route 3: JavaScript (Zero-copy in-memory)
       else if (strcmp(path, "/script.js") == 0) {
-        const char *js_file = resolve_asset_path("script.js");
-        char *js = read_file(js_file);
-        if (js) {
-          send_response(client_fd, "200 OK",
-                        "application/javascript; charset=utf-8", js,
-                        strlen(js));
-          free(js);
-        } else {
-          send_response(client_fd, "404 Not Found", "text/plain",
-                        "script.js not found", 19);
-        }
+        send_response(client_fd, "200 OK",
+                      "application/javascript; charset=utf-8", asset_script_js,
+                      asset_script_js_len);
       }
-
+      // Route 4: Favicon (Zero-copy in-memory)
       else if (strcmp(path, "/favicon.ico") == 0) {
-        const char *ico_path = resolve_asset_path("favicon.ico");
-        size_t ico_len = 0;
-        char *ico_buf = read_binary_file(ico_path, &ico_len);
-        if (ico_buf) {
-          send_response(client_fd, "200 OK", "image/x-icon", ico_buf, ico_len);
-          free(ico_buf);
-        } else {
-          send_response(client_fd, "404 Not Found", "text/plain",
-                        "favicon.ico not found", 21);
-        }
-      } else if (strcmp(path, "/icon.png") == 0) {
-        const char *img_path = resolve_asset_path("icon.png");
-        size_t img_len = 0;
-        char *img_buf = read_binary_file(img_path, &img_len);
-        if (img_buf) {
-          send_response(client_fd, "200 OK", "image/png", img_buf, img_len);
-          free(img_buf);
-        } else {
-          send_response(client_fd, "404 Not Found", "text/plain",
-                        "icon.png not found", 18);
-        }
+        send_response(client_fd, "200 OK", "image/x-icon",
+                      (const char *)asset_favicon, asset_favicon_len);
       }
-
-      // Route 3: Dashboard HTML (Resolved path-independently)
+      // Route 5: Icon / Logo (Zero-copy in-memory)
+      else if (strcmp(path, "/icon.png") == 0) {
+        send_response(client_fd, "200 OK", "image/png",
+                      (const char *)asset_icon, asset_icon_len);
+      }
+      // Route 6: Dashboard HTML (Inject JSON into in-memory template)
       else if (strcmp(path, "/") == 0 || strcmp(path, "/index.html") == 0) {
-        const char *html_file = resolve_asset_path("index.html");
-        char *raw_html = read_file(html_file);
-        if (raw_html) {
-          char *json = todos_to_json(todos);
-          char *final_html =
-              html_inject(raw_html, "/* __INJECTED_TODOS__ */ null", json);
+        char *json = todos_to_json(todos);
+        char *final_html = html_inject(asset_index_html,
+                                       "/* __INJECTED_TODOS__ */ null", json);
 
-          if (final_html) {
-            send_response(client_fd, "200 OK", "text/html; charset=utf-8",
-                          final_html, strlen(final_html));
-            free(final_html);
-          } else {
-            send_response(client_fd, "200 OK", "text/html; charset=utf-8",
-                          raw_html, strlen(raw_html));
-          }
-
-          free(json);
-          free(raw_html);
+        if (final_html) {
+          send_response(client_fd, "200 OK", "text/html; charset=utf-8",
+                        final_html, strlen(final_html));
+          free(final_html);
         } else {
-          send_response(client_fd, "404 Not Found", "text/plain",
-                        "index.html not found", 20);
+          send_response(client_fd, "200 OK", "text/html; charset=utf-8",
+                        asset_index_html, asset_index_html_len);
         }
+        free(json);
       }
-      // Route 4: Open File in System Editor
+      // Route 7: Open File in System Editor
       else if (strncmp(path, "/api/open", 9) == 0) {
         char file[PATH_MAX] = {0};
         int line = 1, col = 1;
 
-        // Parse query string: ?file=...&line=...&col=...
         const char *q = strchr(path, '?');
         if (q) {
           char query[PATH_MAX * 2];

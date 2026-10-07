@@ -1,8 +1,7 @@
-/* ==========================================================================
- *  Enterprise Observability & Systems Tool Design System
- *  Calm Obsidian & Titanium • Liquid Responsive
- *  ========================================================================== */
-
+/*
+SPDX-License-Identifier: AGPL-3.0-only
+Copyright (c) 2026 Soumayjit Bala <ayushkantibala2020@gmail.com>
+*/
 :root {
     --bg: #08080a;
     --panel: #0e0e12;
@@ -53,7 +52,17 @@ body {
     min-height: 100vh;
 }
 
-/* 1. Header */
+.main-wrapper {
+    flex: 1;
+    max-width: 1360px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 24px 24px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
 .app-header {
     display: flex;
     justify-content: space-between;
@@ -79,10 +88,6 @@ body {
 }
 
 .org-glyph {
-    /* width: 9px;
-    height: 9px;
-    background: #fff;
-    border-radius: 2px; */
     width: 14px;
     height: 14px;
     object-fit: contain;
@@ -116,11 +121,9 @@ body {
     font-size: 9.5px;
     font-weight: 600;
     letter-spacing: 0.04em;
-    color: var(--high);
+    color: var(--crit);
     background: rgba(244, 63, 94, 0.08);
     border: 1px solid rgba(244, 63, 94, 0.2);
-    /* background: rgba(56, 189, 248, 0.08); */
-    /* border: 1px solid rgba(56, 189, 248, 0.2); */
     padding: 1px 6px;
     border-radius: 3px;
 }
@@ -142,18 +145,6 @@ kbd {
     font-family: var(--font-mono);
     font-size: 10px;
     margin-right: 3px;
-}
-
-/* 2. Workspace & Toolbar */
-.main-wrapper {
-    flex: 1;
-    max-width: 1360px;
-    width: 100%;
-    margin: 0 auto;
-    padding: 24px 24px 40px;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
 }
 
 .console-toolbar {
@@ -219,6 +210,7 @@ kbd {
     flex-wrap: wrap;
 }
 
+/* Segmented Control Track */
 .segmented-track {
     display: flex;
     background: var(--panel);
@@ -263,6 +255,7 @@ kbd {
     color: var(--fg-secondary);
 }
 
+/* Dropdown Select Clusters */
 .select-cluster {
     display: flex;
     align-items: center;
@@ -288,7 +281,6 @@ kbd {
     border-color: var(--border-strong);
 }
 
-/* 3. Table Layout with TYPE Column */
 .table-card {
     background: var(--panel);
     border: 1px solid var(--border);
@@ -308,6 +300,10 @@ kbd {
     letter-spacing: 0.06em;
     color: var(--fg-muted);
     user-select: none;
+}
+
+.ch-addr {
+    text-align: left;
 }
 
 .table-body {
@@ -350,7 +346,75 @@ kbd {
     background: #fff;
 }
 
-/* Cell Elements */
+.todo-item.is-closed {
+    opacity: 0.55;
+}
+
+.todo-item.is-closed .data-text {
+    color: var(--fg-secondary);
+    text-decoration: line-through;
+}
+
+.cell-state,
+.cell-id,
+.cell-prio,
+.cell-type {
+    display: flex;
+    align-items: center;
+    min-height: 22px;
+}
+
+.cell-addr {
+    display: flex;
+    justify-content: flex-start;
+}
+
+.ref-num {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--fg-secondary);
+}
+
+.data-text {
+    font-size: 13.5px;
+    color: var(--fg-primary);
+    word-break: break-word;
+}
+
+.data-desc {
+    color: var(--fg-secondary);
+    margin-top: 4px;
+    font-size: 11.5px;
+    line-height: 1.5;
+}
+
+.addr-box {
+    display: inline-flex;
+    align-items: center;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border);
+    padding: 3px 8px;
+    border-radius: 4px;
+    color: var(--fg-primary);
+    text-decoration: none;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.addr-box:hover {
+    border-color: var(--fg-secondary);
+    background: var(--panel-elevated);
+}
+
+.addr-box .file-coords {
+    color: var(--fg-secondary);
+}
+
+/* State Pills */
 .state-pill {
     display: inline-flex;
     align-items: center;
@@ -401,17 +465,7 @@ kbd {
     color: var(--state-closed);
 }
 
-.todo-item.is-closed .data-text {
-    color: var(--fg-muted);
-    text-decoration: line-through;
-}
-
-.ref-num {
-    font-family: var(--font-mono);
-    font-size: 11.5px;
-    color: var(--fg-secondary);
-}
-
+/* Priority Tags */
 .prio-tag {
     font-family: var(--font-mono);
     font-size: 10.5px;
@@ -439,7 +493,7 @@ kbd {
     border-color: var(--border-subtle);
 }
 
-/* Type Badges */
+/* Type Pills */
 .type-pill {
     font-family: var(--font-mono);
     font-size: 10px;
@@ -475,38 +529,6 @@ kbd {
     border: 1px solid rgba(251, 146, 60, 0.25);
 }
 
-.data-text {
-    font-size: 13.5px;
-    color: var(--fg-primary);
-    word-break: break-word;
-}
-
-.addr-box {
-    display: inline-flex;
-    align-items: center;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid var(--border);
-    padding: 3px 8px;
-    border-radius: 4px;
-    color: var(--fg-primary);
-    text-decoration: none;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.addr-box:hover {
-    border-color: var(--fg-secondary);
-    background: var(--panel-elevated);
-}
-
-.addr-box .file-coords {
-    color: var(--fg-secondary);
-}
-
 .empty-tray {
     padding: 56px 0;
     text-align: center;
@@ -518,7 +540,29 @@ kbd {
     margin-bottom: 6px;
 }
 
-/* 4. Footer */
+.toast {
+    position: fixed;
+    bottom: 42px;
+    right: 24px;
+    background: var(--panel-active);
+    border: 1px solid var(--border-strong);
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    padding: 7px 14px;
+    border-radius: 4px;
+    opacity: 0;
+    transform: translateY(6px);
+    transition: all 0.15s ease;
+    pointer-events: none;
+    z-index: 100;
+}
+
+.toast.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
 .org-footer {
     margin-top: auto;
     background: var(--panel);
@@ -574,30 +618,6 @@ kbd {
     color: var(--fg-muted);
 }
 
-.toast {
-    position: fixed;
-    bottom: 42px;
-    right: 24px;
-    background: var(--panel-active);
-    border: 1px solid var(--border-strong);
-    color: #fff;
-    font-family: var(--font-mono);
-    font-size: 11.5px;
-    padding: 7px 14px;
-    border-radius: 4px;
-    opacity: 0;
-    transform: translateY(6px);
-    transition: all 0.15s ease;
-    pointer-events: none;
-    z-index: 100;
-}
-
-.toast.visible {
-    opacity: 1;
-    transform: translateY(0);
-}
-
-/* 5. Responsive */
 @media (max-width: 1080px) {
 
     .table-columns,

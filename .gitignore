@@ -1,3 +1,6 @@
 .clangd
 todo
 .archives/
+test/
+.zig-cache/
+zig-out/

@@ -1,4 +1,6 @@
-//
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Soumayjit Bala <ayushkantibala2020@gmail.com>
+
 // NOTE:(#1) [MEMORY CONTRACT]
 //       Caller owns the returned pointer and must release it with free().
 //       Returns NULL on I/O or allocation failure.
@@ -23,7 +25,7 @@
 //       // It can span as many comment lines as needed.
 
 
-#include "./../include/Todo.h"
+#include "./../include/todo.h"
 #include "./../include/log.h"
 
 // Strips comment markers. Returns NULL if the line is NOT a comment.

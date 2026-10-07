@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Soumayjit Bala <ayushkantibala2020@gmail.com>
+
 // Read the SSR array injected into window by C Daemon
 const serverInjectedData = window.__INITIAL_DATA__ || null;
 

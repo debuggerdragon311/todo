@@ -1,4 +1,7 @@
-#include "./../include/Todo.h"
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (c) 2026 Soumayjit Bala <ayushkantibala2020@gmail.com>
+
+#include "./../include/todo.h"
 
 void gitignore_free(gitignore_t *gi) {
   if (!gi)
